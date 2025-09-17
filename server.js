@@ -57,6 +57,38 @@ app.post('/api/register', async (req, res) => {
       history: []
     };
     users.push(user);
+    
+    // Send admin notification for new user registration
+    try {
+      const adminEmail = process.env.ADMIN_EMAIL || 'admin@rehabcyber.com';
+      const subject = `REHABCYBER: New User Registration - ${user.name}`;
+      const html = `
+        <h3>New User Registration</h3>
+        <p><strong>Name:</strong> ${user.name}</p>
+        <p><strong>Email:</strong> ${user.email}</p>
+        <p><strong>Phone:</strong> ${user.phone || 'Not provided'}</p>
+        <p><strong>Registration Time:</strong> ${new Date().toLocaleString()}</p>
+        <p><strong>User ID:</strong> ${user.id}</p>
+        <hr>
+        <p>You can now reach out to this user to schedule their consultation or provide guidance.</p>
+        <p><em>This notification was sent automatically from your REHABCYBER platform.</em></p>
+      `;
+      
+      if (process.env.EMAIL_USER && process.env.EMAIL_PASS) {
+        await emailTransporter.sendMail({
+          from: process.env.EMAIL_USER,
+          to: adminEmail,
+          subject,
+          html
+        });
+        console.log(`[ADMIN] New user notification sent to ${adminEmail} for ${user.name} (${user.email})`);
+      } else {
+        console.log(`[ADMIN] New user registered: ${user.name} (${user.email}) - Email notifications not configured`);
+      }
+    } catch (emailError) {
+      console.log(`[ADMIN] Failed to send new user notification:`, emailError.message);
+    }
+    
     res.json({ message: 'Registration successful' });
   } catch (error) {
     res.status(500).json({ error: 'Registration failed' });

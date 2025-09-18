@@ -276,6 +276,33 @@ app.post('/api/search', async (req, res) => {
       }
     }
     
+    // Search DOAJ (Directory of Open Access Journals) - Free API
+    try {
+      const doajResults = await searchDOAJ(query, filters);
+      results.push(...doajResults);
+      sources.push('DOAJ');
+    } catch (error) {
+      console.error('DOAJ search failed:', error.message);
+    }
+    
+    // Search BioMed Central - Free API
+    try {
+      const biomedResults = await searchBioMedCentral(query, filters);
+      results.push(...biomedResults);
+      sources.push('BioMed Central');
+    } catch (error) {
+      console.error('BioMed Central search failed:', error.message);
+    }
+    
+    // Search PLOS ONE - Free API
+    try {
+      const plosResults = await searchPLOS(query, filters);
+      results.push(...plosResults);
+      sources.push('PLOS');
+    } catch (error) {
+      console.error('PLOS search failed:', error.message);
+    }
+    
     // Apply filters to results
     const filteredResults = applyFilters(results, filters);
     
@@ -395,6 +422,9 @@ app.get('/api/health', (req, res) => {
       pubmed: 'available',
       scienceDirect: SCIENCE_DIRECT_API_KEY !== 'demo-key' ? 'available' : 'requires_api_key',
       scopus: SCOPUS_API_KEY !== 'demo-key' ? 'available' : 'requires_api_key',
+      doaj: 'available',
+      biomedCentral: 'available',
+      plos: 'available',
       jospt: 'simulated',
       ptj: 'simulated'
     },
@@ -681,6 +711,105 @@ function formatResults(results) {
   });
   
   return summary;
+}
+
+async function searchDOAJ(query, filters = {}) {
+  try {
+    const searchParams = {
+      q: query,
+      rows: 5,
+      sort: 'publication_date desc'
+    };
+
+    const response = await axios.get('https://doaj.org/api/v2/search/articles', {
+      params: searchParams,
+      timeout: 10000
+    });
+
+    if (!response.data || !response.data.results) {
+      return [];
+    }
+
+    return response.data.results.map(article => ({
+      title: article.bibjson.title,
+      authors: article.bibjson.author.map(a => `${a.name}`).join(', '),
+      journal: article.bibjson.journal.title,
+      date: article.bibjson.year,
+      doi: article.bibjson.link.find(l => l.type === 'doi')?.content || '',
+      abstract: article.bibjson.abstract || 'No abstract available',
+      source: 'DOAJ',
+      studyType: determineStudyType(article.bibjson.title, article.bibjson.abstract || '')
+    }));
+  } catch (error) {
+    console.error('DOAJ search error:', error.message);
+    return [];
+  }
+}
+
+async function searchBioMedCentral(query, filters = {}) {
+  try {
+    const searchParams = {
+      q: query,
+      rows: 5,
+      sort: 'publication_date desc'
+    };
+
+    const response = await axios.get('https://www.biomedcentral.com/search', {
+      params: searchParams,
+      timeout: 10000
+    });
+
+    if (!response.data || !response.data.results) {
+      return [];
+    }
+
+    return response.data.results.map(article => ({
+      title: article.title,
+      authors: article.author_display,
+      journal: article.journal,
+      date: article.publication_date,
+      doi: article.doi,
+      abstract: article.abstract || 'No abstract available',
+      source: 'BioMed Central',
+      studyType: determineStudyType(article.title, article.abstract || '')
+    }));
+  } catch (error) {
+    console.error('BioMed Central search error:', error.message);
+    return [];
+  }
+}
+
+async function searchPLOS(query, filters = {}) {
+  try {
+    const searchParams = {
+      q: query,
+      rows: 5,
+      sort: 'publication_date desc'
+    };
+
+    const response = await axios.get('https://api.plos.org/search', {
+      params: searchParams,
+      timeout: 10000
+    });
+
+    if (!response.data || !response.data.response || !response.data.response.docs) {
+      return [];
+    }
+
+    return response.data.response.docs.map(article => ({
+      title: article.title_display,
+      authors: article.author_display.join(', '),
+      journal: article.journal || 'PLOS ONE',
+      date: article.publication_date,
+      doi: article.id,
+      abstract: article.abstract || 'No abstract available',
+      source: 'PLOS',
+      studyType: determineStudyType(article.title_display, article.abstract || '')
+    }));
+  } catch (error) {
+    console.error('PLOS search error:', error.message);
+    return [];
+  }
 }
 
 function generateArticleSummary(title, journal, studyType) {
